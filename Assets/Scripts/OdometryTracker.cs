@@ -1,59 +1,57 @@
 using UnityEngine;
-using System.Collections.Generic;
 
 public class OdometryTracker : MonoBehaviour
 {
-    public float trackingInterval = 0.5f; // How often to record position
-    public int maxPositionHistory = 100;  // Maximum number of positions to store
-    
-    private List<Vector3> positionHistory = new List<Vector3>();
+    public float wheelBase = 0.5f;
+    public float trackingInterval = 0.05f;
+
+    [HideInInspector] public Vector3 estimatedPosition = Vector3.zero; // Changed to Vector3
+    [HideInInspector] public float estimatedOrientation = 0f;
+
+    public float leftWheelSpeed = 0f;
+    public float rightWheelSpeed = 0f;
+
     private float timer = 0f;
-    
-    // For visualization
-    public bool showTrail = true;
-    public Color trailColor = Color.blue;
-    
-    void Update()
+
+    void FixedUpdate()
     {
-        timer += Time.deltaTime;
-        
+        timer += Time.fixedDeltaTime;
+
         if (timer >= trackingInterval)
         {
-            // Record current position
-            RecordPosition();
-            timer = 0f;
+            SimulateOdometry(trackingInterval);
+            timer -= trackingInterval; // Subtract instead of reset to maintain timing
         }
     }
-    
-    void RecordPosition()
+
+    void SimulateOdometry(float dt)
     {
-        positionHistory.Add(transform.position);
+        // Differential drive equations
+        float v = (rightWheelSpeed + leftWheelSpeed) / 2f;        // linear velocity
+        float omega = (rightWheelSpeed - leftWheelSpeed) / wheelBase; // angular velocity
+
+        float dx = v * Mathf.Cos(estimatedOrientation) * dt;
+        float dz = v * Mathf.Sin(estimatedOrientation) * dt; // Using z instead of y for ground plane
+        float dtheta = omega * dt;
+
+        estimatedPosition += new Vector3(dx, 0, dz);
+        estimatedOrientation += dtheta;
         
-        // Limit history size
-        if (positionHistory.Count > maxPositionHistory)
-        {
-            positionHistory.RemoveAt(0);
-        }
+        // Normalize angle to -π to π
+        estimatedOrientation = Mathf.Atan2(Mathf.Sin(estimatedOrientation), Mathf.Cos(estimatedOrientation));
     }
-    
+
+    public void SetWheelSpeeds(float left, float right)
+    {
+        leftWheelSpeed = left;
+        rightWheelSpeed = right;
+    }
+
     void OnDrawGizmos()
     {
-        if (!showTrail || positionHistory.Count < 2)
-            return;
-            
-        Gizmos.color = trailColor;
-        
-        for (int i = 0; i < positionHistory.Count - 1; i++)
-        {
-            Gizmos.DrawLine(positionHistory[i], positionHistory[i + 1]);
-        }
-    }
-    
-    public Vector3 GetDistanceTraveled()
-    {
-        if (positionHistory.Count < 2)
-            return Vector3.zero;
-            
-        return positionHistory[positionHistory.Count - 1] - positionHistory[0];
+        Gizmos.color = Color.green;
+        Gizmos.DrawSphere(estimatedPosition, 0.1f);
+        Gizmos.DrawRay(estimatedPosition, 
+                       new Vector3(Mathf.Cos(estimatedOrientation), 0, Mathf.Sin(estimatedOrientation)));
     }
 }

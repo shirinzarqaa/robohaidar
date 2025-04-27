@@ -2676,6 +2676,12 @@ Transform:
     type: 3}
   m_PrefabInstance: {fileID: 232023910}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &248887129 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1283037223, guid: 78f66e17931a4e5449da398ea3d1f94c,
+    type: 3}
+  m_PrefabInstance: {fileID: 1033340541}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &249307110
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -14314,6 +14320,26 @@ PrefabInstance:
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1283037223, guid: 78f66e17931a4e5449da398ea3d1f94c,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1033340551}
+    - targetCorrespondingSourceObject: {fileID: 1283037223, guid: 78f66e17931a4e5449da398ea3d1f94c,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1033340550}
+    - targetCorrespondingSourceObject: {fileID: 1283037223, guid: 78f66e17931a4e5449da398ea3d1f94c,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1033340549}
+    - targetCorrespondingSourceObject: {fileID: 1283037223, guid: 78f66e17931a4e5449da398ea3d1f94c,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1033340552}
+    - targetCorrespondingSourceObject: {fileID: 1283037223, guid: 78f66e17931a4e5449da398ea3d1f94c,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1033340553}
     - targetCorrespondingSourceObject: {fileID: 2126553635, guid: 78f66e17931a4e5449da398ea3d1f94c,
         type: 3}
       insertIndex: -1
@@ -14352,6 +14378,91 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.27, y: 0.1156044, z: 0.40163487}
   m_Center: {x: -0.006431625, y: 0.08730073, z: -0.16830926}
+--- !u!114 &1033340549
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 248887129}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2513068de2244424a961eadf5723cefa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sensorLength: 5
+  sensorCount: 4
+  detectionRadius: 0.2
+--- !u!114 &1033340550
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 248887129}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3e47ce35f1b75a048bb81483d3368dd0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  wheelBase: 0.5
+  trackingInterval: 0.5
+  estimatedPosition: {x: 0, y: 0, z: 0}
+  estimatedOrientation: 0
+  leftWheelSpeed: 0
+  rightWheelSpeed: 0
+--- !u!114 &1033340551
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 248887129}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a4cf09090eaea94294d83686fc3260e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  moveSpeed: 5
+  rotationSpeed: 100
+--- !u!114 &1033340552
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 248887129}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0e20b6f06d626f54c8ce437006e2e291, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  odometry: {fileID: 1033340550}
+  forwardSpeed: 5
+  turnSpeed: 0.5
+  waypointThreshold: 0.3
+  angleThreshold: 5
+  detectionRange: 3
+  bombLayer:
+    serializedVersion: 2
+    m_Bits: 1
+  areaMin: {x: -5, y: -5}
+  areaMax: {x: 5, y: 5}
+  stepSize: 1
+--- !u!114 &1033340553
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 248887129}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6606efd434ffe5044a7956e603644bfe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  odometry: {fileID: 1033340550}
+  wheelBase: 0.5
 --- !u!1001 &1048918924
 PrefabInstance:
   m_ObjectHideFlags: 0
