@@ -1,124 +1,163 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class RobotController : MonoBehaviour
 {
     public float moveSpeed = 3f;
     public float rotationSpeed = 100f;
-    public float changeDirectionTime = 2f;
-    public float obstacleDetectionDistance = 2f;
-    public LayerMask obstacleLayer;
+    public EnvironmentSensor sensor;
 
-    private Rigidbody rb;
-    private float timer = 0f;
-    private float currentDirection = 1f;
+    // Untuk pola zigzag
+    private bool isMovingRight = false; // Mulai belok kiri (false = kiri)
+    private float timeSinceDirectionChange = 0f;
+    public float directionChangeInterval = 3f; // Interval waktu perubahan arah untuk zigzag
+
+    // Untuk tracking area yang sudah dikunjungi
+    private HashSet<Vector2Int> visitedPositions = new HashSet<Vector2Int>();
+    public float gridSize = 1f; // Ukuran grid untuk menandai posisi yang dikunjungi
+
+    // Untuk menghindari obstacle
     private bool isAvoidingObstacle = false;
+    private float avoidanceTime = 0f;
+    public float obstacleDetectionThreshold = 1.5f; // Jarak deteksi obstacle
+    public float obstacleAvoidanceTime = 1f; // Waktu berapa lama menghindari obstacle
 
     void Start()
     {
-        rb = GetComponent<Rigidbody>();
-        if (rb == null)
+        if (sensor == null)
         {
-            rb = gameObject.AddComponent<Rigidbody>();
+            sensor = GetComponent<EnvironmentSensor>();
+            if (sensor == null)
+            {
+                Debug.LogError("No EnvironmentSensor component found!");
+                enabled = false;
+                return;
+            }
         }
 
-        // Pastikan Rigidbody tidak dipengaruhi rotasi dari physics
-        rb.freezeRotation = true;
+        // Tandai posisi awal sebagai sudah dikunjungi
+        MarkCurrentPositionVisited();
     }
 
     void Update()
     {
-        // Cek adanya penghalang dengan Raycast
-        bool obstacleDetected = DetectObstacle();
+        // Tandai posisi saat ini sebagai sudah dikunjungi
+        MarkCurrentPositionVisited();
 
-        if (obstacleDetected)
-        {
-            // Jika ada penghalang, putar menjauh
-            AvoidObstacle();
-        }
-        else
-        {
-            // Jika tidak ada penghalang, lakukan gerakan zigzag normal
-            ZigzagMovement();
-        }
-    }
+        // Cek apakah ada obstacle di depan
+        float frontDistance = sensor.GetDistanceInDirection(0);
 
-    bool DetectObstacle()
-    {
-        // Buat raycast ke depan untuk mendeteksi obstacle
-        RaycastHit hit;
-        if (Physics.Raycast(transform.position, transform.forward, out hit, obstacleDetectionDistance, obstacleLayer))
-        {
-            Debug.DrawRay(transform.position, transform.forward * obstacleDetectionDistance, Color.red);
-            return true;
-        }
-
-        // Tambahkan beberapa raycast diagonal untuk deteksi yang lebih baik
-        Vector3 rightDirection = Quaternion.Euler(0, 30, 0) * transform.forward;
-        if (Physics.Raycast(transform.position, rightDirection, out hit, obstacleDetectionDistance, obstacleLayer))
-        {
-            Debug.DrawRay(transform.position, rightDirection * obstacleDetectionDistance, Color.red);
-            return true;
-        }
-
-        Vector3 leftDirection = Quaternion.Euler(0, -30, 0) * transform.forward;
-        if (Physics.Raycast(transform.position, leftDirection, out hit, obstacleDetectionDistance, obstacleLayer))
-        {
-            Debug.DrawRay(transform.position, leftDirection * obstacleDetectionDistance, Color.red);
-            return true;
-        }
-
-        Debug.DrawRay(transform.position, transform.forward * obstacleDetectionDistance, Color.green);
-        return false;
-    }
-
-    void AvoidObstacle()
-    {
-        isAvoidingObstacle = true;
-
-        // Putar untuk menghindari obstacle
-        float avoidanceRotation = 180f;
-        Quaternion targetRotation = Quaternion.Euler(0, avoidanceRotation, 0);
-        rb.MoveRotation(Quaternion.Slerp(rb.rotation, rb.rotation * targetRotation, Time.deltaTime * 2f));
-
-        // Tetap bergerak maju saat menghindar (dengan kecepatan lebih lambat)
-        Vector3 forwardMovement = transform.forward * (moveSpeed * 0.5f) * Time.deltaTime;
-        rb.MovePosition(rb.position + forwardMovement);
-
-        // Reset timer dan arah setelah menghindar
-        timer = 0f;
-        currentDirection *= -1;
-
-        // Setelah beberapa frame, kembali ke gerakan zigzag normal
-        Invoke("ResetAvoidance", 1.0f);
-    }
-
-    void ResetAvoidance()
-    {
-        isAvoidingObstacle = false;
-    }
-
-    void ZigzagMovement()
-    {
+        // Jika sedang menghindari obstacle
         if (isAvoidingObstacle)
-            return;
-
-        // Update timer
-        timer += Time.deltaTime;
-
-        // Ganti arah setiap beberapa detik
-        if (timer >= changeDirectionTime)
         {
-            currentDirection *= -1;
-            timer = 0f;
+            avoidanceTime -= Time.deltaTime;
+            if (avoidanceTime <= 0)
+            {
+                isAvoidingObstacle = false;
+                // Setelah menghindari, ganti arah zigzag
+                isMovingRight = !isMovingRight;
+            }
+            else
+            {
+                // Belok ke arah yang berlawanan dengan kondisi zigzag
+                RotateToAvoidObstacle();
+                MoveForward();
+                return;
+            }
         }
 
-        // Pergerakan maju
-        Vector3 forwardMovement = transform.forward * moveSpeed * Time.deltaTime;
-        rb.MovePosition(rb.position + forwardMovement);
+        // Jika ada obstacle di depan, mulai menghindari
+        if (frontDistance < obstacleDetectionThreshold)
+        {
+            isAvoidingObstacle = true;
+            avoidanceTime = obstacleAvoidanceTime;
+            return;
+        }
 
-        // Rotasi zigzag
-        float rotationAmount = currentDirection * rotationSpeed * Time.deltaTime;
-        Quaternion turnRotation = Quaternion.Euler(0f, rotationAmount, 0f);
-        rb.MoveRotation(rb.rotation * turnRotation);
+        // Pola zigzag normal ketika tidak ada obstacle
+        timeSinceDirectionChange += Time.deltaTime;
+        if (timeSinceDirectionChange >= directionChangeInterval)
+        {
+            timeSinceDirectionChange = 0f;
+            isMovingRight = !isMovingRight;
+        }
+
+        // Bergerak zigzag
+        float rotationDirection = isMovingRight ? 1f : -1f;
+        transform.Rotate(0, rotationDirection * rotationSpeed * Time.deltaTime, 0);
+
+        // Cek apakah arah yang dituju sudah dikunjungi
+        Vector2Int nextPosition = GetPositionAhead();
+        if (visitedPositions.Contains(nextPosition))
+        {
+            // Coba arah lain jika posisi di depan sudah dikunjungi
+            TryFindUnvisitedDirection();
+        }
+
+        MoveForward();
+    }
+
+    private void MoveForward()
+    {
+        transform.position += transform.forward * moveSpeed * Time.deltaTime;
+    }
+
+    private void RotateToAvoidObstacle()
+    {
+        // Jika isMovingRight = true (zigzag ke kanan), maka hindari ke kiri
+        // Jika isMovingRight = false (zigzag ke kiri), maka hindari ke kanan
+        float rotationDirection = isMovingRight ? -1f : 1f;
+        transform.Rotate(0, rotationDirection * rotationSpeed * Time.deltaTime, 0);
+    }
+
+    private void MarkCurrentPositionVisited()
+    {
+        Vector2Int gridPos = WorldToGrid(transform.position);
+        visitedPositions.Add(gridPos);
+    }
+
+    private Vector2Int WorldToGrid(Vector3 worldPosition)
+    {
+        return new Vector2Int(
+            Mathf.FloorToInt(worldPosition.x / gridSize),
+            Mathf.FloorToInt(worldPosition.z / gridSize)
+        );
+    }
+
+    private Vector2Int GetPositionAhead()
+    {
+        Vector3 positionAhead = transform.position + transform.forward * gridSize;
+        return WorldToGrid(positionAhead);
+    }
+
+    private void TryFindUnvisitedDirection()
+    {
+        // Coba cari arah yang belum dikunjungi
+        for (int i = 0; i < 8; i++)
+        {
+            // Rotasi 45 derajat untuk setiap coba
+            transform.Rotate(0, 45f, 0);
+
+            Vector2Int potentialPosition = GetPositionAhead();
+            if (!visitedPositions.Contains(potentialPosition))
+            {
+                // Arah yang belum dikunjungi ditemukan
+                return;
+            }
+        }
+
+        // Jika semua arah telah dikunjungi, lanjutkan dengan arah zigzag saat ini
+    }
+
+    // Metode untuk debugging
+    void OnDrawGizmos()
+    {
+        // Visualisasi area yang sudah dikunjungi (untuk debugging)
+        Gizmos.color = Color.yellow;
+        foreach (Vector2Int pos in visitedPositions)
+        {
+            Vector3 worldPos = new Vector3(pos.x * gridSize + gridSize / 2, 0.1f, pos.y * gridSize + gridSize / 2);
+            Gizmos.DrawCube(worldPos, new Vector3(gridSize * 0.8f, 0.05f, gridSize * 0.8f));
+        }
     }
 }
