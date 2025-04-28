@@ -1,163 +1,279 @@
 using UnityEngine;
-using System.Collections.Generic;
+using System.Collections;
+using System.Collections.Generic; // Untuk List jika mencari bomb
 
 public class RobotController : MonoBehaviour
 {
+    [Header("Movement")]
     public float moveSpeed = 3f;
-    public float rotationSpeed = 100f;
-    public EnvironmentSensor sensor;
+    public float rotationSpeed = 80f; // Derajat per detik
+    public float backwardSpeedMultiplier = 0.7f; // Seberapa cepat mundur dibanding maju
 
-    // Untuk pola zigzag
-    private bool isMovingRight = false; // Mulai belok kiri (false = kiri)
-    private float timeSinceDirectionChange = 0f;
-    public float directionChangeInterval = 3f; // Interval waktu perubahan arah untuk zigzag
+    [Header("Sensors")]
+    public float sensorLength = 1.5f;
+    public float sensorRadius = 0.2f;
+    public LayerMask obstacleLayer;
+    public float frontObstacleDistance = 0.8f; // Jarak deteksi depan
+    public float backObstacleDistance = 0.5f;  // Jarak deteksi belakang (lebih pendek)
 
-    // Untuk tracking area yang sudah dikunjungi
-    private HashSet<Vector2Int> visitedPositions = new HashSet<Vector2Int>();
-    public float gridSize = 1f; // Ukuran grid untuk menandai posisi yang dikunjungi
+    [Header("Bomb Detection")]
+    public float bombDetectionRadius = 5.0f;
+    public string bombTag = "Bombs"; // Pastikan tag bomb benar
 
-    // Untuk menghindari obstacle
-    private bool isAvoidingObstacle = false;
-    private float avoidanceTime = 0f;
-    public float obstacleDetectionThreshold = 1.5f; // Jarak deteksi obstacle
-    public float obstacleAvoidanceTime = 1f; // Waktu berapa lama menghindari obstacle
+    [Header("Maneuver Settings")]
+    public float backtrackDuration = 1.0f; // Durasi mundur sambil belok
+    public float forwardTurnDuration = 1.0f; // Durasi maju sambil belok (setelah mundur)
+    public float stuckTurnAngle = 90f; // Sudut putar saat buntu
 
-    void Start()
+    [Header("State (Debug Only)")]
+    [SerializeField] private RobotState currentState = RobotState.MovingForward;
+    private Transform targetBomb = null;
+    private float maneuverTimer = 0f;
+    private float currentTurnDirection = 1f; // 1 for right, -1 for left (digunakan saat manuver)
+    private Quaternion stuckTargetRotation;
+    private bool isExecutingStuckTurn = false;
+
+    private enum RobotState
     {
-        if (sensor == null)
-        {
-            sensor = GetComponent<EnvironmentSensor>();
-            if (sensor == null)
-            {
-                Debug.LogError("No EnvironmentSensor component found!");
-                enabled = false;
-                return;
-            }
-        }
-
-        // Tandai posisi awal sebagai sudah dikunjungi
-        MarkCurrentPositionVisited();
+        MovingForward,
+        SeekingBomb,
+        Backtracking,
+        ForwardTurning,
+        TurningFromStuck
     }
 
     void Update()
     {
-        // Tandai posisi saat ini sebagai sudah dikunjungi
-        MarkCurrentPositionVisited();
-
-        // Cek apakah ada obstacle di depan
-        float frontDistance = sensor.GetDistanceInDirection(0);
-
-        // Jika sedang menghindari obstacle
-        if (isAvoidingObstacle)
+        // --- Prioritas 1: Cari & Kejar Bomb ---
+        if (CheckAndTargetBomb())
         {
-            avoidanceTime -= Time.deltaTime;
-            if (avoidanceTime <= 0)
-            {
-                isAvoidingObstacle = false;
-                // Setelah menghindari, ganti arah zigzag
-                isMovingRight = !isMovingRight;
-            }
-            else
-            {
-                // Belok ke arah yang berlawanan dengan kondisi zigzag
-                RotateToAvoidObstacle();
+            currentState = RobotState.SeekingBomb;
+            ExecuteSeekBomb();
+            return; // Prioritas tertinggi, jangan lakukan yang lain
+        }
+        // Jika sebelumnya mengejar bom tapi sekarang tidak ada lagi, kembali ke MovingForward
+        if (currentState == RobotState.SeekingBomb && targetBomb == null)
+        {
+            currentState = RobotState.MovingForward;
+        }
+
+
+        // --- Prioritas 2: Cek Kondisi Buntu (Depan & Belakang) ---
+        bool frontBlocked = IsObstacleDetected(transform.forward, frontObstacleDistance);
+        bool backBlocked = IsObstacleDetected(-transform.forward, backObstacleDistance);
+
+        if (frontBlocked && backBlocked && currentState != RobotState.TurningFromStuck && !isExecutingStuckTurn)
+        {
+            Debug.Log("Stuck! Initiating turn.");
+            currentState = RobotState.TurningFromStuck;
+            // Tentukan arah belok (misal, coba kanan dulu)
+            float turnAngle = stuckTurnAngle;
+             // Atau bisa dibuat acak: float turnAngle = Random.Range(0, 2) == 0 ? stuckTurnAngle : -stuckTurnAngle;
+            stuckTargetRotation = transform.rotation * Quaternion.Euler(0, turnAngle, 0);
+            isExecutingStuckTurn = true;
+            return; // Mulai proses belok
+        }
+
+
+        // --- Prioritas 3: Cek Obstacle Depan (jika tidak sedang manuver lain) ---
+        if (frontBlocked && currentState == RobotState.MovingForward)
+        {
+             Debug.Log("Front obstacle detected. Starting backtrack.");
+             currentState = RobotState.Backtracking;
+             maneuverTimer = backtrackDuration;
+             // Tentukan arah belok saat mundur (misal, selalu kanan)
+             currentTurnDirection = 1f;
+             return; // Mulai manuver
+        }
+
+
+        // --- Jalankan Aksi Berdasarkan State ---
+        switch (currentState)
+        {
+            case RobotState.MovingForward:
                 MoveForward();
-                return;
-            }
+                break;
+
+            case RobotState.SeekingBomb:
+                 // Logika sudah di handle di awal Update
+                 // Jika sampai di sini berarti bom hilang saat sedang kejar
+                 currentState = RobotState.MovingForward;
+                break;
+
+            case RobotState.Backtracking:
+                ExecuteBacktrack();
+                break;
+
+            case RobotState.ForwardTurning:
+                ExecuteForwardTurn();
+                break;
+
+            case RobotState.TurningFromStuck:
+                 ExecuteStuckTurn();
+                break;
         }
-
-        // Jika ada obstacle di depan, mulai menghindari
-        if (frontDistance < obstacleDetectionThreshold)
-        {
-            isAvoidingObstacle = true;
-            avoidanceTime = obstacleAvoidanceTime;
-            return;
-        }
-
-        // Pola zigzag normal ketika tidak ada obstacle
-        timeSinceDirectionChange += Time.deltaTime;
-        if (timeSinceDirectionChange >= directionChangeInterval)
-        {
-            timeSinceDirectionChange = 0f;
-            isMovingRight = !isMovingRight;
-        }
-
-        // Bergerak zigzag
-        float rotationDirection = isMovingRight ? 1f : -1f;
-        transform.Rotate(0, rotationDirection * rotationSpeed * Time.deltaTime, 0);
-
-        // Cek apakah arah yang dituju sudah dikunjungi
-        Vector2Int nextPosition = GetPositionAhead();
-        if (visitedPositions.Contains(nextPosition))
-        {
-            // Coba arah lain jika posisi di depan sudah dikunjungi
-            TryFindUnvisitedDirection();
-        }
-
-        MoveForward();
     }
 
-    private void MoveForward()
+    // --- Fungsi Aksi State ---
+
+    void MoveForward()
     {
         transform.position += transform.forward * moveSpeed * Time.deltaTime;
     }
 
-    private void RotateToAvoidObstacle()
+    void ExecuteSeekBomb()
     {
-        // Jika isMovingRight = true (zigzag ke kanan), maka hindari ke kiri
-        // Jika isMovingRight = false (zigzag ke kiri), maka hindari ke kanan
-        float rotationDirection = isMovingRight ? -1f : 1f;
-        transform.Rotate(0, rotationDirection * rotationSpeed * Time.deltaTime, 0);
+        if (targetBomb == null) {
+             currentState = RobotState.MovingForward; // Target hilang
+             return;
+        }
+
+        // Arahkan ke bomb
+        Vector3 directionToBomb = (targetBomb.position - transform.position).normalized;
+        directionToBomb.y = 0; // Jaga agar tetap di ground
+
+        // Rotasi
+        if (directionToBomb != Vector3.zero) {
+            Quaternion targetRotation = Quaternion.LookRotation(directionToBomb);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * 0.5f * Time.deltaTime); // Belok lebih lambat saat kejar bom?
+        }
+
+        // Bergerak maju ke bomb
+        // Berhenti jika sudah sangat dekat (jarak defuse)
+        float distanceToBomb = Vector3.Distance(transform.position, targetBomb.position);
+        if(distanceToBomb > 1.0f) { // Sesuaikan jarak berhenti ini
+             transform.position += transform.forward * moveSpeed * Time.deltaTime;
+        } else {
+             Debug.Log("Reached bomb vicinity. Attempting defuse.");
+             // Tambahkan logika defuse di sini jika perlu (atau biarkan A* controller yg handle)
+             // Untuk controller ini, kita anggap berhenti saja.
+             // currentState = RobotState.MovingForward; // Kembali normal setelah dekat?
+             // targetBomb = null; // Hapus target
+        }
     }
 
-    private void MarkCurrentPositionVisited()
+    void ExecuteBacktrack()
     {
-        Vector2Int gridPos = WorldToGrid(transform.position);
-        visitedPositions.Add(gridPos);
-    }
-
-    private Vector2Int WorldToGrid(Vector3 worldPosition)
-    {
-        return new Vector2Int(
-            Mathf.FloorToInt(worldPosition.x / gridSize),
-            Mathf.FloorToInt(worldPosition.z / gridSize)
-        );
-    }
-
-    private Vector2Int GetPositionAhead()
-    {
-        Vector3 positionAhead = transform.position + transform.forward * gridSize;
-        return WorldToGrid(positionAhead);
-    }
-
-    private void TryFindUnvisitedDirection()
-    {
-        // Coba cari arah yang belum dikunjungi
-        for (int i = 0; i < 8; i++)
+        if (maneuverTimer > 0)
         {
-            // Rotasi 45 derajat untuk setiap coba
-            transform.Rotate(0, 45f, 0);
+            // Mundur
+            transform.position -= transform.forward * moveSpeed * backwardSpeedMultiplier * Time.deltaTime;
+            // Sambil belok (misal ke kanan)
+            transform.Rotate(0, currentTurnDirection * rotationSpeed * Time.deltaTime, 0);
+            maneuverTimer -= Time.deltaTime;
+        }
+        else
+        {
+            // Selesai mundur, mulai maju sambil belok
+             Debug.Log("Backtrack finished. Starting forward turn.");
+            currentState = RobotState.ForwardTurning;
+            maneuverTimer = forwardTurnDuration; // Reset timer untuk fase maju
+        }
+    }
 
-            Vector2Int potentialPosition = GetPositionAhead();
-            if (!visitedPositions.Contains(potentialPosition))
+    void ExecuteForwardTurn()
+    {
+        if (maneuverTimer > 0)
+        {
+            // Maju
+            transform.position += transform.forward * moveSpeed * Time.deltaTime;
+            // Sambil melanjutkan belok ke arah yang sama
+            transform.Rotate(0, currentTurnDirection * rotationSpeed * Time.deltaTime, 0);
+            maneuverTimer -= Time.deltaTime;
+        }
+        else
+        {
+            // Selesai manuver, kembali normal
+             Debug.Log("Forward turn finished. Resuming normal movement.");
+            currentState = RobotState.MovingForward;
+        }
+    }
+
+     void ExecuteStuckTurn()
+     {
+         if (isExecutingStuckTurn) {
+            // Putar robot secara bertahap menuju targetRotation
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, stuckTargetRotation, rotationSpeed * 1.5f * Time.deltaTime); // Putar lebih cepat saat stuck
+
+            // Cek apakah rotasi sudah mendekati target
+            if (Quaternion.Angle(transform.rotation, stuckTargetRotation) < 2.0f)
             {
-                // Arah yang belum dikunjungi ditemukan
-                return;
+                transform.rotation = stuckTargetRotation; // Snap ke rotasi target
+                isExecutingStuckTurn = false;
+                currentState = RobotState.MovingForward; // Kembali ke state bergerak lurus
+                Debug.Log("Finished turning from stuck position.");
+            }
+         } else {
+             // Seharusnya tidak pernah sampai sini jika logika benar, tapi sbg safety:
+             currentState = RobotState.MovingForward;
+         }
+     }
+
+
+    // --- Fungsi Helper ---
+
+    bool CheckAndTargetBomb()
+    {
+        Collider[] hitColliders = Physics.OverlapSphere(transform.position, bombDetectionRadius);
+        float closestDistSqr = Mathf.Infinity;
+        Transform potentialTarget = null;
+
+        foreach (var hitCollider in hitColliders)
+        {
+            if (hitCollider.CompareTag(bombTag) && hitCollider.gameObject.activeInHierarchy)
+            {
+                float distSqr = (hitCollider.transform.position - transform.position).sqrMagnitude;
+                if (distSqr < closestDistSqr)
+                {
+                    closestDistSqr = distSqr;
+                    potentialTarget = hitCollider.transform;
+                }
             }
         }
 
-        // Jika semua arah telah dikunjungi, lanjutkan dengan arah zigzag saat ini
+        if (potentialTarget != null) {
+            if (targetBomb != potentialTarget) {
+                Debug.Log($"Bomb detected nearby: {potentialTarget.name}");
+            }
+            targetBomb = potentialTarget;
+            return true; // Ada bom terdekat
+        } else {
+            targetBomb = null;
+            return false; // Tidak ada bom terdekat
+        }
     }
 
-    // Metode untuk debugging
-    void OnDrawGizmos()
+    bool IsObstacleDetected(Vector3 direction, float maxDistance)
     {
-        // Visualisasi area yang sudah dikunjungi (untuk debugging)
+        RaycastHit hit;
+        bool detected = Physics.SphereCast(
+            transform.position,
+            sensorRadius,
+            direction,
+            out hit,
+            maxDistance,
+            obstacleLayer // Gunakan layer mask yang sudah didefinisikan
+        );
+
+        // Debug Ray
+        Color rayColor = detected ? Color.red : Color.green;
+        Debug.DrawRay(transform.position, direction * maxDistance, rayColor);
+
+        return detected;
+    }
+
+     // --- Gizmos untuk Debug ---
+    void OnDrawGizmosSelected() {
+        // Draw Bomb Detection Radius
         Gizmos.color = Color.yellow;
-        foreach (Vector2Int pos in visitedPositions)
-        {
-            Vector3 worldPos = new Vector3(pos.x * gridSize + gridSize / 2, 0.1f, pos.y * gridSize + gridSize / 2);
-            Gizmos.DrawCube(worldPos, new Vector3(gridSize * 0.8f, 0.05f, gridSize * 0.8f));
-        }
+        Gizmos.DrawWireSphere(transform.position, bombDetectionRadius);
+
+        // Draw Front Sensor Range
+        Gizmos.color = Color.blue;
+        Gizmos.DrawLine(transform.position, transform.position + transform.forward * frontObstacleDistance);
+
+         // Draw Back Sensor Range
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawLine(transform.position, transform.position - transform.forward * backObstacleDistance);
     }
 }

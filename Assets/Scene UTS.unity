@@ -29616,6 +29616,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   moveSpeed: 5
   rotationSpeed: 100
+  backupSpeed: 2
+  sensor: {fileID: 0}
+  directionChangeInterval: 3
+  gridSize: 1
+  obstacleDetectionThreshold: 1.5
+  obstacleAvoidanceTime: 1
+  backupDuration: 1.5
+  backupThreshold: 0.8
+  sideRayAngle: 60
 --- !u!54 &2074519346
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -29624,7 +29633,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2074519343}
   serializedVersion: 4
-  m_Mass: 1000
+  m_Mass: 500
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -29707,9 +29716,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2513068de2244424a961eadf5723cefa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  sensorLength: 5
-  sensorCount: 8
-  detectionRadius: 0.8
+  sensorLength: 2
+  sensorCount: 12
+  detectionRadius: 0.5
 --- !u!114 &2074519351
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -29722,8 +29731,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2513068de2244424a961eadf5723cefa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  sensorLength: 5
-  sensorCount: 8
+  sensorLength: 2
+  sensorCount: 12
   detectionRadius: 0.2
 --- !u!114 &2074519352
 MonoBehaviour:
@@ -29737,6 +29746,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d8bee64196e8a9341a7b6dfc17fa9c3d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  detectionRange: 1
+  obstacleLayer:
+    serializedVersion: 2
+    m_Bits: 0
 --- !u!1001 &2077161364
 PrefabInstance:
   m_ObjectHideFlags: 0
