@@ -149,7 +149,7 @@ public class MappingSystem : MonoBehaviour
         }
     }
 
-    bool IsInMapBounds(int x, int y)
+    public bool IsInMapBounds(int x, int y)
     {
         return x >= 0 && x < mapSize && y >= 0 && y < mapSize;
     }

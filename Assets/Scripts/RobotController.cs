@@ -1,348 +1,318 @@
 using UnityEngine;
-using System.Collections;
-using System.Collections.Generic; // Dibutuhkan untuk List/Queue
+using System.Collections.Generic;
 
 public class RobotController : MonoBehaviour
 {
-    // ... (Header Movement, Sensors, Bomb Detection, Maneuver Settings tetap sama) ...
-    [Header("Movement")]
     public float moveSpeed = 3f;
-    public float rotationSpeed = 60f;
-    public float backwardSpeedMultiplier = 0.7f;
+    public float rotationSpeed = 100f;
+    public EnvironmentSensor sensor; // Pastikan ini terhubung
+    public MappingSystem mapSystem; // Hubungkan ini di Inspector atau via FindObjectOfType
 
-    [Header("Sensors")]
-    public float sensorLength = 1.5f;
-    public float sensorRadius = 0.2f;
-    public LayerMask obstacleLayer;
-    public float frontObstacleDistance = 0.8f;
-    public float backObstacleDistance = 0.5f;
+    // Pengaturan Navigasi Peta
+    public float mapCheckDistance = 1.5f;        // Jarak cek peta ke depan
+    public float turnThreshold = 0.8f;         // Seberapa dekat obstacle/scanned area sebelum belok
+    public float explorationTurnAngle = 45f;   // Sudut belok saat mencari arah baru
+    public LayerMask bombLayer; // Tambahkan LayerMask untuk deteksi bom
 
-    [Header("Bomb Detection")]
-    public float bombDetectionRadius = 5.0f;
-    public string bombTag = "Bombs";
+    // Visited Grid (untuk menghindari loop kecil)
+    private HashSet<Vector2Int> visitedPositions = new HashSet<Vector2Int>();
+    public float gridSize = 1f;
 
-    [Header("Maneuver Settings")]
-    public float backtrackDuration = 1.0f;
-    public float forwardTurnDuration = 1.0f;
-    public float stuckTurnAngle = 90f;
+    // State Obstacle Avoidance
+    private bool isAvoidingObstacle = false;
+    private float avoidanceTime = 0f;
+    public float obstacleDetectionThreshold = 1.0f; // Kurangi sedikit agar lebih sensitif
+    public float obstacleAvoidanceTime = 1.0f;
+    private bool preferRightAvoidance = true; // Arah belok saat menghindari
 
-    [Header("Loop Prevention")]
-    public int positionHistoryLength = 20;   // Berapa banyak posisi yang disimpan
-    public float recordPositionInterval = 0.5f; // Catat posisi setiap X detik
-    public float repetitionDistanceThreshold = 1.5f; // Jarak minimum untuk dianggap kembali ke area lama
-    public float breakLoopTurnAngle = 90f;   // Sudut putar saat keluar loop
-    private Queue<Vector3> positionHistory = new Queue<Vector3>();
-    private float positionRecordTimer = 0f;
+    // Status Robot
+    private enum RobotState { Exploring, AvoidingObstacle, TargetingBomb }
+    private RobotState currentState = RobotState.Exploring;
+    private Transform targetBomb = null; // Untuk menyimpan bom yang terdeteksi
 
-
-    [Header("State (Debug Only)")]
-    [SerializeField] private RobotState currentState = RobotState.MovingForward;
-    private Transform targetBomb = null;
-    private float maneuverTimer = 0f;
-    private float currentTurnDirection = 1f;
-    private Quaternion stuckTargetRotation;
-    private bool isExecutingStuckTurn = false; // Flag ini mungkin bisa digabung ke state TurningFromStuck
-
-    private enum RobotState
+    void Start()
     {
-        MovingForward,
-        SeekingBomb,
-        Backtracking,
-        ForwardTurning,
-        TurningFromStuck // Digunakan untuk buntu depan-belakang DAN untuk keluar loop
+        if (sensor == null) sensor = GetComponent<EnvironmentSensor>();
+        if (sensor == null) { /* Error handling */ enabled = false; return; }
+
+        // Cari MappingSystem jika belum di-assign
+        if (mapSystem == null) mapSystem = FindObjectOfType<MappingSystem>();
+        if (mapSystem == null) { Debug.LogError("MappingSystem not found!"); enabled = false; return; }
+
+        MarkCurrentPositionVisited();
     }
 
     void Update()
     {
-        // --- Pencatatan History Posisi ---
-        RecordPositionHistory();
+        MarkCurrentPositionVisited(); // Tandai grid cell saat ini
 
-        // --- Prioritas 2: Cek Kondisi Buntu (Depan & Belakang) ---
-        bool frontBlocked = IsObstacleDetected(transform.forward, frontObstacleDistance);
-        bool backBlocked = IsObstacleDetected(-transform.forward, backObstacleDistance);
+        // 1. Cek Sensor Langsung untuk Obstacle & Bom
+        float frontDistance = sensor.GetDistanceInDirection(0); // Asumsi sensor 0 adalah depan
+        CheckForBombsNearby(); // Cek bom dalam jangkauan sensor
 
-        // Gunakan state TurningFromStuck untuk Buntu dan Keluar Loop
-        if (isExecutingStuckTurn) {
-             ExecuteStuckTurn(); // Lanjutkan putaran jika sedang berjalan
-             return;
-        }
-
-        if (frontBlocked && backBlocked && currentState != RobotState.TurningFromStuck)
-        {
-            Debug.Log("Stuck (Front & Back)! Initiating recovery turn.");
-            InitiateStuckTurn(Random.Range(0, 2) == 0 ? breakLoopTurnAngle : -breakLoopTurnAngle); // Putar acak Kiri/Kanan
-             // Kita tidak clear history di sini, hanya saat loop terdeteksi
-            return;
-        }
-
-        // --- Prioritas 3: Cek Obstacle Depan & Deteksi Loop ---
-        if (frontBlocked && currentState == RobotState.MovingForward)
-        {
-            // Cek dulu apakah ini perulangan SEBELUM memutuskan backtrack
-            if (IsRepeatingArea())
-            {
-                Debug.LogWarning("Repetition Detected! Breaking loop pattern.");
-                // Lakukan putaran besar untuk keluar loop
-                InitiateStuckTurn(Random.Range(0, 2) == 0 ? breakLoopTurnAngle : -breakLoopTurnAngle); // Putar acak Kiri/Kanan
-                // KOSONGKAN HISTORY setelah memutuskan keluar loop
-                positionHistory.Clear();
-                positionRecordTimer = recordPositionInterval; // Reset timer record juga
-            }
-            else
-            {
-                // Tidak ada perulangan, lakukan backtrack standar
-                 Debug.Log("Front obstacle detected. Starting backtrack maneuver.");
-                 currentState = RobotState.Backtracking;
-                 maneuverTimer = backtrackDuration;
-                 currentTurnDirection = Random.Range(0, 2) == 0 ? 1f : -1f; // Arah belok backtrack bisa random juga
-            }
-            return; // Aksi sudah ditentukan (entah backtrack atau turning)
-        }
-
-        // --- Prioritas 1: Cari & Kejar Bomb ---
-        if (CheckAndTargetBomb())
-        {
-            currentState = RobotState.SeekingBomb;
-            ExecuteSeekBomb();
-            return;
-        }
-        if (currentState == RobotState.SeekingBomb && targetBomb == null)
-        {
-            currentState = RobotState.MovingForward;
-        }
-
-        
-
-        // --- Jalankan Aksi Berdasarkan State (jika tidak ada prioritas di atas yg terpenuhi) ---
+        // 2. Logika State Machine
         switch (currentState)
         {
-            case RobotState.MovingForward:
-                MoveForward();
+            case RobotState.Exploring:
+                UpdateExploring(frontDistance);
                 break;
-            case RobotState.SeekingBomb:
-                // Handled di atas, jika sampai sini bom hilang
-                 currentState = RobotState.MovingForward;
+            case RobotState.AvoidingObstacle:
+                UpdateAvoidingObstacle();
                 break;
-            case RobotState.Backtracking:
-                ExecuteBacktrack();
-                break;
-            case RobotState.ForwardTurning:
-                ExecuteForwardTurn();
-                break;
-             case RobotState.TurningFromStuck:
-                 // Seharusnya ditangani oleh check isExecutingStuckTurn di atas
-                 // Jika sampai sini, mungkin proses turn selesai, kembali normal
-                 if (!isExecutingStuckTurn) currentState = RobotState.MovingForward;
+            case RobotState.TargetingBomb:
+                UpdateTargetingBomb();
                 break;
         }
     }
 
-    // --- Fungsi Pencatatan dan Deteksi Loop ---
+    // --- State Updates ---
 
-    void RecordPositionHistory()
+    void UpdateExploring(float frontDistance)
     {
-        positionRecordTimer -= Time.deltaTime;
-        if (positionRecordTimer <= 0f)
-        {
-            // Tambahkan posisi saat ini ke queue
-            positionHistory.Enqueue(transform.position);
-
-            // Jika queue terlalu panjang, buang yang paling lama
-            while (positionHistory.Count > positionHistoryLength)
-            {
-                positionHistory.Dequeue();
-            }
-
-            // Reset timer
-            positionRecordTimer = recordPositionInterval;
-        }
-    }
-
-    bool IsRepeatingArea()
-    {
-        // Jangan cek jika history belum cukup terisi
-        if (positionHistory.Count < positionHistoryLength / 2) // Misalnya, butuh setengah history terisi dulu
-        {
-            return false;
+        // Jika ada bom terdeteksi, ganti state
+        if (targetBomb != null) {
+            currentState = RobotState.TargetingBomb;
+            return;
         }
 
-        int checkCount = 0; // Untuk debug, berapa banyak poin yg dicek
-        int closeCount = 0; // Berapa banyak poin yg dekat
-
-        // Iterasi melalui history (kecuali beberapa poin terakhir)
-        // Kita pakai ToArray agar bisa iterasi tanpa mengubah queue asli saat ini
-        Vector3[] historyArray = positionHistory.ToArray();
-        // Cek dari paling lama ke yang lebih baru, tapi lewati N terakhir
-        int pointsToCheck = historyArray.Length - 3; // Jangan cek 3 posisi terakhir
-
-        for (int i = 0; i < pointsToCheck; i++)
+        // Jika ada obstacle dekat, ganti state
+        if (frontDistance < obstacleDetectionThreshold)
         {
-             checkCount++;
-            float distanceSqr = (transform.position - historyArray[i]).sqrMagnitude; // Pakai sqrMagnitude lebih cepat
-            if (distanceSqr < repetitionDistanceThreshold * repetitionDistanceThreshold)
+            StartAvoidingObstacle(frontDistance);
+            return;
+        }
+
+        // Cek Peta di Depan
+        Vector3 checkPosForward = transform.position + transform.forward * mapCheckDistance;
+        Vector2Int nextGridPos = GetPositionAhead();
+        Color mapColorForward = mapSystem.GetColorAtWorldPos(checkPosForward);
+
+        bool isForwardBlockedOnMap = (mapColorForward == mapSystem.obstacleColor || mapColorForward == mapSystem.scannedSafeColor);
+        bool isNextGridVisited = visitedPositions.Contains(nextGridPos);
+
+        if (isForwardBlockedOnMap || isNextGridVisited)
+        {
+            // Arah depan diblok di peta atau grid cell sudah dikunjungi -> Cari arah baru
+            float turnAngle = FindBestExplorationDirection();
+            if (Mathf.Abs(turnAngle) > 1f) // Jika ada arah bagus ditemukan
             {
-                // Ditemukan posisi lama yang dekat!
-                closeCount++;
-                 // Kita bisa return true di sini jika 1 saja cukup,
-                 // atau hitung berapa banyak yg dekat sbg indikator confidence
-                // return true;
+                // Berputar lebih cepat saat mencari arah baru
+                 transform.Rotate(0, Mathf.Sign(turnAngle) * rotationSpeed * Time.deltaTime * 1.5f, 0);
+            } else {
+                 // Jika tidak ada arah bagus (misal terpojok), putar saja perlahan
+                 transform.Rotate(0, rotationSpeed * Time.deltaTime * 0.5f, 0); // Putar pelan
             }
         }
+        else
+        {
+            // Arah depan aman di peta dan grid cell belum dikunjungi -> Maju
+            MoveForward();
+        }
+    }
 
-         // Debug.Log($"Checking repetition: Checked {checkCount} points, Found {closeCount} close points.");
-        // Tentukan threshold berapa banyak poin dekat yg dianggap loop, misal > 1
-        return closeCount > 0; // Anggap loop jika ada SATU saja posisi lama yg dekat
+    void StartAvoidingObstacle(float frontDistance)
+    {
+         currentState = RobotState.AvoidingObstacle;
+         avoidanceTime = obstacleAvoidanceTime;
+
+         // Coba putar ke arah yang lebih bebas berdasarkan sensor samping (jika ada)
+         // Untuk sekarang, kita tentukan saja berdasarkan preferensi
+         preferRightAvoidance = !preferRightAvoidance; // Ganti arah tiap kali menghindari
     }
 
 
-    // --- Fungsi Aksi State (MoveForward, ExecuteSeekBomb, ExecuteBacktrack, ExecuteForwardTurn tetap SAMA) ---
-     void MoveForward()
+    void UpdateAvoidingObstacle()
+    {
+        avoidanceTime -= Time.deltaTime;
+        if (avoidanceTime <= 0)
+        {
+            currentState = RobotState.Exploring; // Kembali eksplorasi
+            isAvoidingObstacle = false; // Reset flag lama jika masih ada
+            return;
+        }
+
+        // Logika avoidance sederhana: putar dan maju sedikit
+        float rotationDirection = preferRightAvoidance ? 1f : -1f;
+        transform.Rotate(0, rotationDirection * rotationSpeed * Time.deltaTime, 0);
+        // Optional: maju sedikit saat berputar agar tidak diam di tempat
+        transform.position += transform.forward * moveSpeed * 0.3f * Time.deltaTime;
+    }
+
+    void UpdateTargetingBomb() {
+         if (targetBomb == null) {
+             currentState = RobotState.Exploring; // Bom hilang? Kembali eksplorasi
+             return;
+         }
+
+        // Cek obstacle di depan saat menuju bom
+         float frontDistance = sensor.GetDistanceInDirection(0);
+         if (frontDistance < obstacleDetectionThreshold * 0.8f) { // Lebih sensitif saat targetting
+              StartAvoidingObstacle(frontDistance); // Hindari dulu, lalu lanjut targetting
+              return;
+         }
+
+
+         // Arahkan ke bom dan maju
+         Vector3 directionToBomb = (targetBomb.position - transform.position).normalized;
+         directionToBomb.y = 0; // Jaga agar robot tidak miring
+         Quaternion lookRotation = Quaternion.LookRotation(directionToBomb);
+         transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, Time.deltaTime * rotationSpeed * 0.5f); // Putar lebih lambat & halus
+
+         // Maju jika sudah cukup menghadap bom
+         if(Vector3.Angle(transform.forward, directionToBomb) < 15f) {
+              MoveForward();
+         }
+
+         // Jika sangat dekat, biarkan trigger collision yang bekerja
+         if (Vector3.Distance(transform.position, targetBomb.position) < 0.5f) {
+             // Biarkan OnTriggerEnter di Bomb.cs handle defusal
+             // Setelah defuse (di Bomb.cs atau BombCounter.cs), kita perlu reset targetBomb
+             // Kita bisa panggil method di sini dari BombCounter
+         }
+    }
+
+    // Panggil ini dari BombCounter setelah bom berhasil di-defuse
+    public void OnBombDefused() {
+        targetBomb = null;
+        currentState = RobotState.Exploring; // Lanjut cari bom lain
+    }
+
+    // --- Fungsi Bantu ---
+
+    void CheckForBombsNearby() {
+        // Gunakan sensor atau Physics check untuk mendeteksi bom
+        // Contoh menggunakan SphereCast (mirip sensor tapi fokus ke bom)
+        RaycastHit hit;
+        if (Physics.SphereCast(transform.position, 1.0f, transform.forward, out hit, sensor.sensorLength, bombLayer)) {
+             if (hit.collider.CompareTag("Bombs")) { // Pastikan tag benar
+                 if(targetBomb == null || targetBomb != hit.transform) {
+                    Debug.Log("BOMB DETECTED BY SENSOR: " + hit.collider.name);
+                    targetBomb = hit.transform;
+                    currentState = RobotState.TargetingBomb; // Langsung targetkan
+                 }
+             }
+        }
+         // Jika state masih targeting tapi bom sudah tidak terdeteksi sensor (mungkin terhalang)
+         // Biarkan saja state targeting, dia akan coba mendekat. OnTriggerEnter akan jadi backup.
+         // Atau jika bom sudah dihancurkan, OnBombDefused() akan dipanggil.
+    }
+
+    float FindBestExplorationDirection()
+    {
+        float[] angles = { 0, explorationTurnAngle, -explorationTurnAngle, explorationTurnAngle * 2, -explorationTurnAngle * 2, 180f }; // Cek depan, samping, belakang
+        float bestScore = -100f; // Mulai dari skor sangat rendah
+        float bestAngle = 0f;    // Sudut relatif terbaik yang ditemukan
+
+        foreach (float angle in angles)
+        {
+            Vector3 checkDirection = Quaternion.Euler(0, angle, 0) * transform.forward;
+            Vector3 checkPosWorld = transform.position + checkDirection * mapCheckDistance;
+            Vector2Int checkPosGrid = WorldToGrid(transform.position + checkDirection * gridSize); // Cek juga grid cell
+
+            Color mapColor = mapSystem.GetColorAtWorldPos(checkPosWorld);
+            float currentScore = 0f;
+
+            // Penalti/Bonus berdasarkan Peta
+            if (mapColor == mapSystem.obstacleColor || !mapSystem.IsInMapBounds(mapSystem.WorldToMapCoords(checkPosWorld).x, mapSystem.WorldToMapCoords(checkPosWorld).y))
+            {
+                currentScore = -100f; // Sangat buruk (obstacle atau di luar map)
+            }
+            else if (mapColor == mapSystem.initialColor)
+            {
+                currentScore = 10f;  // Sangat bagus (area belum discan)
+            }
+            else if (mapColor == mapSystem.scannedSafeColor)
+            {
+                currentScore = 1f;   // Kurang bagus (sudah discan aman)
+            }
+            else {
+                currentScore = 5f; // Warna lain? Mungkin area belum terdefinisi, beri skor sedang
+            }
+
+            // Penalti jika grid cell sudah dikunjungi (kecuali arah depan 0 derajat)
+            if (angle != 0 && visitedPositions.Contains(checkPosGrid))
+            {
+                currentScore -= 5f; // Kurangi skor jika grid sudah dilewati
+            }
+
+            // Sedikit preferensi untuk tidak berbelok terlalu tajam jika skor mirip
+            currentScore -= Mathf.Abs(angle) / 45f * 0.5f;
+
+
+            if (currentScore > bestScore)
+            {
+                bestScore = currentScore;
+                bestAngle = angle;
+            }
+        }
+
+         // Jika skor terbaik masih sangat rendah, mungkin terjebak. Coba putar balik.
+        if (bestScore < 0 && !Mathf.Approximately(bestAngle, 180f)) {
+             // Cek apakah 180 derajat (belakang) valid
+             Vector3 checkPosBehind = transform.position - transform.forward * mapCheckDistance;
+             Color mapColorBehind = mapSystem.GetColorAtWorldPos(checkPosBehind);
+              if (mapColorBehind != mapSystem.obstacleColor) {
+                 return 180f; // Pilih putar balik jika memungkinkan
+              }
+        }
+
+
+        // Kembalikan sudut *relatif* terbaik yang ditemukan
+        return bestAngle;
+    }
+
+    private void MoveForward()
     {
         transform.position += transform.forward * moveSpeed * Time.deltaTime;
     }
 
-     void ExecuteSeekBomb()
-     {
-          if (targetBomb == null) {
-              currentState = RobotState.MovingForward;
-              return;
-          }
-          Vector3 directionToBomb = (targetBomb.position - transform.position).normalized;
-          directionToBomb.y = 0;
-          if (directionToBomb != Vector3.zero) {
-              Quaternion targetRotation = Quaternion.LookRotation(directionToBomb);
-              transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * 0.5f * Time.deltaTime);
-          }
-          float distanceToBomb = Vector3.Distance(transform.position, targetBomb.position);
-          if(distanceToBomb > 1.0f) {
-              transform.position += transform.forward * moveSpeed * Time.deltaTime;
-          } else {
-              // Debug.Log("Reached bomb vicinity.");
-              // Logika defuse mungkin lebih baik di controller lain
-          }
-     }
-
-     void ExecuteBacktrack()
-     {
-         if (maneuverTimer > 0)
-         {
-             transform.position -= transform.forward * moveSpeed * backwardSpeedMultiplier * Time.deltaTime;
-             transform.Rotate(0, currentTurnDirection * rotationSpeed * Time.deltaTime, 0);
-             maneuverTimer -= Time.deltaTime;
-         }
-         else
-         {
-             currentState = RobotState.ForwardTurning;
-             maneuverTimer = forwardTurnDuration;
-         }
-     }
-
-     void ExecuteForwardTurn()
-     {
-         if (maneuverTimer > 0)
-         {
-             transform.position += transform.forward * moveSpeed * Time.deltaTime;
-             transform.Rotate(0, currentTurnDirection * rotationSpeed * Time.deltaTime, 0);
-             maneuverTimer -= Time.deltaTime;
-         }
-         else
-         {
-             currentState = RobotState.MovingForward;
-         }
-     }
-
-    // --- Modifikasi Fungsi Stuck Turn ---
-     void InitiateStuckTurn(float angle) {
-         // Fungsi ini dipanggil saat buntu depan-belakang ATAU saat loop terdeteksi
-         currentState = RobotState.TurningFromStuck;
-         stuckTargetRotation = transform.rotation * Quaternion.Euler(0, angle, 0);
-         isExecutingStuckTurn = true; // Set flag bahwa sedang proses belok
-         Debug.Log($"Initiating recovery turn by {angle} degrees.");
-     }
-
-     void ExecuteStuckTurn() // Nama tetap sama, tapi sekarang dipanggil berulang
-     {
-         if (isExecutingStuckTurn) {
-            transform.rotation = Quaternion.RotateTowards(transform.rotation, stuckTargetRotation, rotationSpeed * 1.5f * Time.deltaTime);
-
-            if (Quaternion.Angle(transform.rotation, stuckTargetRotation) < 2.0f)
-            {
-                transform.rotation = stuckTargetRotation;
-                isExecutingStuckTurn = false; // Selesai belok
-                currentState = RobotState.MovingForward; // Kembali normal
-                Debug.Log("Finished recovery turn.");
-            }
-         } else {
-             // Safety fallback
-             currentState = RobotState.MovingForward;
-         }
-     }
-
-    // --- Fungsi Helper (CheckAndTargetBomb, IsObstacleDetected, OnDrawGizmosSelected tetap SAMA) ---
-     bool CheckAndTargetBomb()
+    private void MarkCurrentPositionVisited()
     {
-        Collider[] hitColliders = Physics.OverlapSphere(transform.position, bombDetectionRadius);
-        float closestDistSqr = Mathf.Infinity;
-        Transform potentialTarget = null;
+        Vector2Int gridPos = WorldToGrid(transform.position);
+        visitedPositions.Add(gridPos);
 
-        foreach (var hitCollider in hitColliders)
-        {
-            if (hitCollider.CompareTag(bombTag) && hitCollider.gameObject.activeInHierarchy)
-            {
-                float distSqr = (hitCollider.transform.position - transform.position).sqrMagnitude;
-                if (distSqr < closestDistSqr)
-                {
-                    closestDistSqr = distSqr;
-                    potentialTarget = hitCollider.transform;
-                }
-            }
-        }
-
-        if (potentialTarget != null) {
-            if (targetBomb != potentialTarget) {
-                // Debug.Log($"Bomb detected nearby: {potentialTarget.name}");
-            }
-            targetBomb = potentialTarget;
-            return true;
-        } else {
-            targetBomb = null;
-            return false;
-        }
+        // Juga panggil MappingSystem untuk menandai area sekitar robot sebagai 'scanned safe'
+        // Jika MappingSystem.InternalEnvironmentScan sudah berjalan, ini mungkin tidak perlu
+        // Jika InternalEnvironmentScan TIDAK otomatis menandai area aman, maka panggil ini:
+        // mapSystem.MarkAreaAsScannedSafe(transform.position, sensor.sensorLength * 0.5f);
     }
 
-    bool IsObstacleDetected(Vector3 direction, float maxDistance)
+    private Vector2Int WorldToGrid(Vector3 worldPosition)
     {
-        RaycastHit hit;
-        bool detected = Physics.SphereCast(
-            transform.position,
-            sensorRadius,
-            direction,
-            out hit,
-            maxDistance,
-            obstacleLayer
+        return new Vector2Int(
+            Mathf.FloorToInt(worldPosition.x / gridSize),
+            Mathf.FloorToInt(worldPosition.z / gridSize)
         );
-        // Color rayColor = detected ? Color.red : Color.green;
-        // Debug.DrawRay(transform.position, direction * maxDistance, rayColor);
-        return detected;
     }
 
-     void OnDrawGizmosSelected() {
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, bombDetectionRadius);
-        Gizmos.color = Color.blue;
-        Gizmos.DrawLine(transform.position, transform.position + transform.forward * frontObstacleDistance);
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawLine(transform.position, transform.position - transform.forward * backObstacleDistance);
+    private Vector2Int GetPositionAhead()
+    {
+        Vector3 positionAhead = transform.position + transform.forward * gridSize; // Cek 1 grid ke depan
+        return WorldToGrid(positionAhead);
+    }
 
-        // Visualize position history
-        if (positionHistory != null && positionHistory.Count > 0) {
-            Gizmos.color = Color.magenta;
-            Vector3 lastPos = positionHistory.Peek(); // Ambil yg paling lama tanpa menghapus
-            foreach(Vector3 pos in positionHistory) {
-                Gizmos.DrawSphere(pos, 0.1f);
-                 // Gizmos.DrawLine(lastPos, pos); // Gambar garis antar history (bisa jadi berantakan)
-                 // lastPos = pos;
-            }
+    // Gizmos untuk Debug
+    void OnDrawGizmos()
+    {
+         // Gizmo untuk visited positions
+        Gizmos.color = Color.yellow;
+        foreach (Vector2Int pos in visitedPositions)
+        {
+            Vector3 worldPos = new Vector3(pos.x * gridSize + gridSize / 2, 0.1f, pos.y * gridSize + gridSize / 2);
+            Gizmos.DrawCube(worldPos, new Vector3(gridSize * 0.8f, 0.05f, gridSize * 0.8f));
         }
+
+         // Gizmo untuk state
+         Gizmos.color = Color.cyan;
+         Gizmos.DrawWireSphere(transform.position + Vector3.up * 1.5f, 0.3f);
+         // Tampilkan state di atas robot jika perlu (pakai UnityEditor namespace)
+         #if UNITY_EDITOR
+             UnityEditor.Handles.Label(transform.position + Vector3.up * 1.7f, currentState.ToString());
+              if (targetBomb != null) {
+                  Gizmos.color = Color.magenta;
+                  Gizmos.DrawLine(transform.position + Vector3.up, targetBomb.position);
+              }
+         #endif
+
     }
 }
