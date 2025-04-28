@@ -21,7 +21,6 @@ public class BombGenerator : MonoBehaviour
             }
         }
     
-        // Randomize the bombs.
         RandomizeBombs(bombA);
         RandomizeBombs(bombB);
         RandomizeBombs(bombC);

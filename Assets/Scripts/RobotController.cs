@@ -7,20 +7,15 @@ public class RobotController : MonoBehaviour
     public float rotationSpeed = 100f;
     public EnvironmentSensor sensor;
 
-    // Untuk pola zigzag
-    private bool isMovingRight = false; // Mulai belok kiri (false = kiri)
+    private bool isMovingRight = false; 
     private float timeSinceDirectionChange = 0f;
-    public float directionChangeInterval = 3f; // Interval waktu perubahan arah untuk zigzag
-
-    // Untuk tracking area yang sudah dikunjungi
+    public float directionChangeInterval = 3f; 
     private HashSet<Vector2Int> visitedPositions = new HashSet<Vector2Int>();
-    public float gridSize = 1f; // Ukuran grid untuk menandai posisi yang dikunjungi
-
-    // Untuk menghindari obstacle
+    public float gridSize = 1f; 
     private bool isAvoidingObstacle = false;
     private float avoidanceTime = 0f;
-    public float obstacleDetectionThreshold = 1.5f; // Jarak deteksi obstacle
-    public float obstacleAvoidanceTime = 1f; // Waktu berapa lama menghindari obstacle
+    public float obstacleDetectionThreshold = 1.5f; 
+    public float obstacleAvoidanceTime = 1f; 
 
     void Start()
     {
@@ -35,38 +30,30 @@ public class RobotController : MonoBehaviour
             }
         }
 
-        // Tandai posisi awal sebagai sudah dikunjungi
         MarkCurrentPositionVisited();
     }
 
     void Update()
     {
-        // Tandai posisi saat ini sebagai sudah dikunjungi
         MarkCurrentPositionVisited();
-
-        // Cek apakah ada obstacle di depan
         float frontDistance = sensor.GetDistanceInDirection(0);
 
-        // Jika sedang menghindari obstacle
         if (isAvoidingObstacle)
         {
             avoidanceTime -= Time.deltaTime;
             if (avoidanceTime <= 0)
             {
                 isAvoidingObstacle = false;
-                // Setelah menghindari, ganti arah zigzag
                 isMovingRight = !isMovingRight;
             }
             else
             {
-                // Belok ke arah yang berlawanan dengan kondisi zigzag
                 RotateToAvoidObstacle();
                 MoveForward();
                 return;
             }
         }
 
-        // Jika ada obstacle di depan, mulai menghindari
         if (frontDistance < obstacleDetectionThreshold)
         {
             isAvoidingObstacle = true;
@@ -74,7 +61,6 @@ public class RobotController : MonoBehaviour
             return;
         }
 
-        // Pola zigzag normal ketika tidak ada obstacle
         timeSinceDirectionChange += Time.deltaTime;
         if (timeSinceDirectionChange >= directionChangeInterval)
         {
@@ -82,15 +68,12 @@ public class RobotController : MonoBehaviour
             isMovingRight = !isMovingRight;
         }
 
-        // Bergerak zigzag
         float rotationDirection = isMovingRight ? 1f : -1f;
         transform.Rotate(0, rotationDirection * rotationSpeed * Time.deltaTime, 0);
 
-        // Cek apakah arah yang dituju sudah dikunjungi
         Vector2Int nextPosition = GetPositionAhead();
         if (visitedPositions.Contains(nextPosition))
         {
-            // Coba arah lain jika posisi di depan sudah dikunjungi
             TryFindUnvisitedDirection();
         }
 
@@ -104,8 +87,6 @@ public class RobotController : MonoBehaviour
 
     private void RotateToAvoidObstacle()
     {
-        // Jika isMovingRight = true (zigzag ke kanan), maka hindari ke kiri
-        // Jika isMovingRight = false (zigzag ke kiri), maka hindari ke kanan
         float rotationDirection = isMovingRight ? -1f : 1f;
         transform.Rotate(0, rotationDirection * rotationSpeed * Time.deltaTime, 0);
     }
@@ -132,27 +113,20 @@ public class RobotController : MonoBehaviour
 
     private void TryFindUnvisitedDirection()
     {
-        // Coba cari arah yang belum dikunjungi
         for (int i = 0; i < 8; i++)
         {
-            // Rotasi 45 derajat untuk setiap coba
             transform.Rotate(0, 45f, 0);
 
             Vector2Int potentialPosition = GetPositionAhead();
             if (!visitedPositions.Contains(potentialPosition))
             {
-                // Arah yang belum dikunjungi ditemukan
                 return;
             }
         }
-
-        // Jika semua arah telah dikunjungi, lanjutkan dengan arah zigzag saat ini
     }
 
-    // Metode untuk debugging
     void OnDrawGizmos()
     {
-        // Visualisasi area yang sudah dikunjungi (untuk debugging)
         Gizmos.color = Color.yellow;
         foreach (Vector2Int pos in visitedPositions)
         {
