@@ -22,16 +22,12 @@ public class EnvironmentSensor : MonoBehaviour
     {
         for (int i = 0; i < sensorCount; i++)
         {
-            // Calculate direction for this sensor
             float angle = i * (360f / sensorCount);
             Vector3 direction = Quaternion.Euler(0, angle, 0) * transform.forward;
 
-            // Cast ray
             if (Physics.SphereCast(transform.position, detectionRadius, direction, out hitResults[i], sensorLength))
             {
                 Debug.DrawRay(transform.position, direction * hitResults[i].distance, Color.red);
-
-                // You can add logic here to react to detected objects
                 Debug.Log("Detected: " + hitResults[i].collider.gameObject.name +
                           " at distance: " + hitResults[i].distance);
             }
@@ -42,7 +38,6 @@ public class EnvironmentSensor : MonoBehaviour
         }
     }
 
-    // Get the closest object in a specific direction (0 = front, 1 = right, etc.)
     public float GetDistanceInDirection(int directionIndex)
     {
         if (directionIndex < 0 || directionIndex >= sensorCount)

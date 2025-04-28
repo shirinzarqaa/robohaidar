@@ -24846,7 +24846,27 @@ PrefabInstance:
     - target: {fileID: 198000013564982074, guid: 31fee1c2b8079524babddad687e95210,
         type: 3}
       propertyPath: randomSeed
-      value: -1342935898
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 198000013564982074, guid: 31fee1c2b8079524babddad687e95210,
+        type: 3}
+      propertyPath: InitialModule.startSizeY.minMaxState
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 198000013564982074, guid: 31fee1c2b8079524babddad687e95210,
+        type: 3}
+      propertyPath: InitialModule.startSizeZ.minMaxState
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 198000013564982074, guid: 31fee1c2b8079524babddad687e95210,
+        type: 3}
+      propertyPath: InitialModule.startRotationX.minMaxState
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 198000013564982074, guid: 31fee1c2b8079524babddad687e95210,
+        type: 3}
+      propertyPath: InitialModule.startRotationY.minMaxState
+      value: 3
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -29616,24 +29636,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   moveSpeed: 5
   rotationSpeed: 75
-  backwardSpeedMultiplier: 0.7
-  sensorLength: 0.8
-  sensorRadius: 0.2
-  obstacleLayer:
-    serializedVersion: 2
-    m_Bits: 33
-  frontObstacleDistance: 0.2
-  backObstacleDistance: 0.2
-  bombDetectionRadius: 7
-  bombTag: Bombs
-  backtrackDuration: 1
-  forwardTurnDuration: 1
-  stuckTurnAngle: 90
-  positionHistoryLength: 20
-  recordPositionInterval: 0.5
-  repetitionDistanceThreshold: 1.5
-  breakLoopTurnAngle: 90
-  currentState: 0
+  sensor: {fileID: 0}
+  directionChangeInterval: 3
+  gridSize: 1
+  obstacleDetectionThreshold: 1.5
+  obstacleAvoidanceTime: 1
 --- !u!54 &2074519346
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -29675,12 +29682,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mapSize: 150
   mapScale: 0.5
-  emptyColor: {r: 1, g: 1, b: 1, a: 1}
+  initialColor: {r: 1, g: 1, b: 1, a: 1}
   obstacleColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  scannedSafeColor: {r: 0.4, g: 0.4, b: 0.4, a: 1}
   robotColor: {r: 1, g: 0, b: 0, a: 1}
   minimapDisplay: {fileID: 1560814740}
-  scanRadius: 15
-  scanRays: 12
+  mappingScanRadius: 3
+  mappingScanRays: 12
+  mappingObstacleLayer:
+    serializedVersion: 2
+    m_Bits: 0
 --- !u!114 &2074519348
 MonoBehaviour:
   m_ObjectHideFlags: 0

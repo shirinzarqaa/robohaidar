@@ -3,13 +3,11 @@ using System.Collections.Generic;
 
 public class OdometryTracker : MonoBehaviour
 {
-    public float trackingInterval = 0.5f; // How often to record position
-    public int maxPositionHistory = 100;  // Maximum number of positions to store
+    public float trackingInterval = 0.5f; 
+    public int maxPositionHistory = 100;  
 
     private List<Vector3> positionHistory = new List<Vector3>();
     private float timer = 0f;
-
-    // For visualization
     public bool showTrail = true;
     public Color trailColor = Color.blue;
 
@@ -19,7 +17,6 @@ public class OdometryTracker : MonoBehaviour
 
         if (timer >= trackingInterval)
         {
-            // Record current position
             RecordPosition();
             timer = 0f;
         }
@@ -28,8 +25,6 @@ public class OdometryTracker : MonoBehaviour
     void RecordPosition()
     {
         positionHistory.Add(transform.position);
-
-        // Limit history size
         if (positionHistory.Count > maxPositionHistory)
         {
             positionHistory.RemoveAt(0);
