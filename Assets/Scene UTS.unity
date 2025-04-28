@@ -654,8 +654,8 @@ WheelCollider:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 38648279}
   serializedVersion: 2
-  m_Center: {x: 0, y: 0, z: 0}
-  m_Radius: 0.5
+  m_Center: {x: 0, y: 0.15, z: 0}
+  m_Radius: 0.09
   m_SuspensionSpring:
     spring: 35000
     damper: 4500
@@ -683,7 +683,7 @@ WheelCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_Enabled: 0
+  m_Enabled: 1
   m_ProvidesContacts: 0
 --- !u!1001 &41750318
 PrefabInstance:
@@ -1288,8 +1288,8 @@ WheelCollider:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 99932872}
   serializedVersion: 2
-  m_Center: {x: 0, y: 0, z: 0}
-  m_Radius: 0.5
+  m_Center: {x: 0, y: 0.15, z: 0}
+  m_Radius: 0.09
   m_SuspensionSpring:
     spring: 35000
     damper: 4500
@@ -1317,7 +1317,7 @@ WheelCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_Enabled: 0
+  m_Enabled: 1
   m_ProvidesContacts: 0
 --- !u!1001 &102277198
 PrefabInstance:
@@ -16665,8 +16665,8 @@ WheelCollider:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1184008150}
   serializedVersion: 2
-  m_Center: {x: 0, y: 0, z: 0}
-  m_Radius: 0.5
+  m_Center: {x: 0, y: 0.15, z: 0}
+  m_Radius: 0.09
   m_SuspensionSpring:
     spring: 35000
     damper: 4500
@@ -16694,7 +16694,7 @@ WheelCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_Enabled: 0
+  m_Enabled: 1
   m_ProvidesContacts: 0
 --- !u!1001 &1187474055
 PrefabInstance:
@@ -22881,8 +22881,8 @@ WheelCollider:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1634306034}
   serializedVersion: 2
-  m_Center: {x: 0, y: 0, z: 0}
-  m_Radius: 0.5
+  m_Center: {x: 0, y: 0.14, z: 0}
+  m_Radius: 0.09
   m_SuspensionSpring:
     spring: 35000
     damper: 4500
@@ -22910,7 +22910,7 @@ WheelCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_Enabled: 0
+  m_Enabled: 1
   m_ProvidesContacts: 0
 --- !u!1001 &1634648797
 PrefabInstance:
@@ -29615,16 +29615,25 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   moveSpeed: 5
-  rotationSpeed: 100
-  backupSpeed: 2
-  sensor: {fileID: 0}
-  directionChangeInterval: 3
-  gridSize: 1
-  obstacleDetectionThreshold: 1.5
-  obstacleAvoidanceTime: 1
-  backupDuration: 1.5
-  backupThreshold: 0.8
-  sideRayAngle: 60
+  rotationSpeed: 75
+  backwardSpeedMultiplier: 0.7
+  sensorLength: 0.8
+  sensorRadius: 0.2
+  obstacleLayer:
+    serializedVersion: 2
+    m_Bits: 33
+  frontObstacleDistance: 0.2
+  backObstacleDistance: 0.2
+  bombDetectionRadius: 7
+  bombTag: Bombs
+  backtrackDuration: 1
+  forwardTurnDuration: 1
+  stuckTurnAngle: 90
+  positionHistoryLength: 20
+  recordPositionInterval: 0.5
+  repetitionDistanceThreshold: 1.5
+  breakLoopTurnAngle: 90
+  currentState: 0
 --- !u!54 &2074519346
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -29633,7 +29642,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2074519343}
   serializedVersion: 4
-  m_Mass: 500
+  m_Mass: 1000
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -29651,7 +29660,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 2
 --- !u!114 &2074519347
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -29701,7 +29710,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   trackingInterval: 0.8
-  maxPositionHistory: 500
+  maxPositionHistory: 1000
   showTrail: 1
   trailColor: {r: 0.6679245, g: 0.104599446, b: 0.104599446, a: 1}
 --- !u!114 &2074519350
@@ -29716,9 +29725,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2513068de2244424a961eadf5723cefa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  sensorLength: 2
+  sensorLength: 0.8
   sensorCount: 12
-  detectionRadius: 0.5
+  detectionRadius: 0.2
 --- !u!114 &2074519351
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -29731,7 +29740,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2513068de2244424a961eadf5723cefa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  sensorLength: 2
+  sensorLength: 0.8
   sensorCount: 12
   detectionRadius: 0.2
 --- !u!114 &2074519352
@@ -29746,10 +29755,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d8bee64196e8a9341a7b6dfc17fa9c3d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  detectionRange: 1
+  detectionRange: 0.8
   obstacleLayer:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 4294967295
 --- !u!1001 &2077161364
 PrefabInstance:
   m_ObjectHideFlags: 0
